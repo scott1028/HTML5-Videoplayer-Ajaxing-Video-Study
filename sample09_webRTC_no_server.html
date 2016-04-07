@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>強制使用 Relay Server 版本</title>
+    <style type="text/css">
+        #theirs{
+            position: absolute;
+            top: 100px;
+            left: 100px;
+            width: 500px;
+        }
+        #yours{
+            position: absolute;
+            top: 120px;
+            left: 480px;
+            width: 100px;
+            z-index: 9999;
+            border:1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<p>修改 iceServer Config 可用來測試 TurnServer!(強制使用 Relay Server 版本)</p>
+<video id="yours" autoplay></video>
+<video id="theirs" autoplay></video>
+<script>
+function hasUserMedia() {
+    navigator.getUserMedia = navigator.getUserMedia || navigator.msGetUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    return !!navigator.getUserMedia;
+}
+function hasRTCPeerConnection() {
+    window.RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection || window.msRTCPeerConnection;
+    return !!window.RTCPeerConnection;
+}
+
+var yourVideo = document.getElementById("yours");
+var theirVideo = document.getElementById("theirs");
+var yourConnection, theirConnection;
+
+if (hasUserMedia()) {
+    navigator.getUserMedia({ video: true, audio: false },
+        stream => {
+            console.log('Set up to canvas first, and addStream invoked later.');
+            yourVideo.src = window.URL.createObjectURL(stream);
+
+            //
+            if (hasRTCPeerConnection()) {
+                console.log('Remote connection start! after 1.5 seconds your connection will start.');
+                theirPeerConnetion();  // remote first due to no signaling server.
+                setTimeout(function(){
+                    console.log('Your connection start!');
+                    startPeerConnection(stream);
+                }, 1500);
+            } else {
+                alert("没有RTCPeerConnection API");
+            }
+        },
+        err => {
+            console.log(err);
+        })
+} else {
+    alert("没有userMedia API")
+}
+
+function startPeerConnection(stream) {
+    // 可以自己 Build 一個 Stun/Turn Server(ICE Server)
+    var config = {
+        'iceServers': [{ 'urls': 'turn:demo1.net.cn:3479', username: 'username1', credential: 'key1' }]
+    };
+
+    yourConnection = new RTCPeerConnection(config);
+
+    yourConnection.onicecandidate = function(e) {
+        console.log('[3] onicecandidate!');
+
+        //
+        if (e.candidate) {            
+            // [start] add relay only mode
+            var type = e.candidate.candidate.split(" ")[7];
+            if (type != "relay") {
+                console.log("candidate ignored: TURN only mode.");
+                return;
+            }
+            // [end] add relay only mode
+
+            theirConnection.addIceCandidate(new RTCIceCandidate(e.candidate));
+        }
+    }
+
+    /*
+    // #1 Sample
+    // onnegotiationneeded 是一個可選的事件監聽, 也可以直接 createOffer 就傳給對方( 取代 Add 本地 Stream 後才建立 )
+    // 注意！順序必須是 AddStream 之後才開始 Create SDP
+    yourConnection.onnegotiationneeded = function(){
+        console.log('[2] onnegotiationneeded!');
+
+        console.log('[3] createOffer!');
+        yourConnection.createOffer().then(function(offer) {
+            console.log(offer);
+            // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+            yourConnection.setLocalDescription(offer);
+            theirConnection.setRemoteDescription(offer);
+            theirConnection.createAnswer().then(function(answer) {
+                theirConnection.setLocalDescription(answer);
+                yourConnection.setRemoteDescription(answer);
+            })
+        });
+    };
+    yourConnection.addStream(stream);
+    */
+    
+
+    // #2 Sample
+    setTimeout(function(){
+        console.log('[1] addStream! To trigger `onnegotiationneeded` for create local SDP.');
+        yourConnection.addStream(stream);
+
+        console.log('[2] createOffer!');
+        yourConnection.createOffer().then(function(offer) {
+            console.log(offer);
+            // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+            yourConnection.setLocalDescription(offer);
+            theirConnection.setRemoteDescription(offer);
+            theirConnection.createAnswer().then(function(answer) {
+                theirConnection.setLocalDescription(answer);
+                yourConnection.setRemoteDescription(answer);
+            })
+        });
+    }, 2000);
+}
+
+function theirPeerConnetion(stream){
+    var config = {
+        'iceServers': [{ 'urls': 'turn:demo1.net.cn:3479', username: 'username1', credential: 'key1' }]
+    };
+    theirConnection = new RTCPeerConnection(config);
+    theirConnection.onicecandidate = function(e) {
+
+        // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+        if (e.candidate) {
+            // [start] add relay only mode
+            var type = e.candidate.candidate.split(" ")[7];
+            if (type != "relay") {
+                console.log("candidate ignored: TURN only mode.");
+                return;
+            }
+            // [end] add relay only mode
+
+            yourConnection.addIceCandidate(new RTCIceCandidate(e.candidate));
+        }
+    }
+    
+    theirConnection.onaddstream = function(e) {
+        theirVideo.src = window.URL.createObjectURL(e.stream);
+    }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+extends layout
+
+block content
+  h1= title
+  p Welcome to #{title}
+  br
+  label ss
+    input(id="ss" value="0")
+  label to
+    input(id="to" value="1")
+  button(onclick="doPlay();") Play
+  br
+  br
+  template
+    source(type="video/webm")
+  video(controls=true)
+  script.
+    var doPlay = () => {
+      (document.querySelector('source') || { remove: () => {} }).remove();
+      var ss = document.querySelector('#ss').value;
+      var to = document.querySelector('#to').value;
+      var source = document.querySelector('template').content.querySelector('source').cloneNode();
+      source.setAttribute('src', `/video?ss=${ss}&to=${to}`);
+      document.querySelector('video').appendChild(source);
+      document.querySelector('video').load();
+      document.querySelector('video').play();
+    };

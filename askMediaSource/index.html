@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <script src="https://code.jquery.com/jquery-2.2.3.js"></script>
+</head>
+<script>
+    function callback(buffer, sourceBuffer){
+        sourceBuffer.appendBuffer(buffer);
+        console.log(buffer.byteLength);
+    };
+
+    function get(url, callback, sourceBuffer) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.send();
+        xhr.onload = function() {
+            callback(xhr.response, sourceBuffer);
+        };
+    };
+</script>
+<body>
+<video id="v1" controls autoplay></video>
+<script>
+    var ms1 = new MediaSource();
+    var video1 = document.querySelector('#v1');
+    video1.src = window.URL.createObjectURL(ms1);
+    ms1.addEventListener('sourceopen', function(e) {
+        var sourceBuffer = ms1.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+        get('success.webm', callback, sourceBuffer);
+    }, false);
+</script>
+<hr />
+<video id="v2" controls autoplay></video>
+<script>
+    var ms2 = new MediaSource();
+    var video2 = document.querySelector('#v2');
+    video2.src = window.URL.createObjectURL(ms2);
+    ms2.addEventListener('sourceopen', function(e) {
+        var sourceBuffer = ms2.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+        get('fail.webm', callback, sourceBuffer);
+    }, false);
+</script>
+<h3>Why my secondary video can not be played? I don't know what's difference between success.webm and fail.webm</h3>
+</body>
+</html>

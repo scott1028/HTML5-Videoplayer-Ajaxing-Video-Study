@@ -1,0 +1,140 @@
+<html>
+    <script src="https://code.jquery.com/jquery-2.2.3.js"></script>
+    <body>
+    <h4>分段式 MediaSource Buffer 播放影片可以實現 RealTime Media Play。</h4>
+    <p>Instructions to playback Adaptive WebM using DASH</p>
+    <video controls preload="metadata"></video>
+    <script>
+        var inputObj = {
+            // Sample-7
+            fileName: '/3131aaa.mp4',
+            range: [
+                '0-830/1930',
+                '831-1930/1930',
+            ]
+            // Sample-6
+            // fileName: '/chrome.webm',
+            // range: [
+            //     '0-540135/1991507',
+            //     '540136-1991507/1991507',
+            // ]
+            // Sample-5
+            // fileName: '/cannotstream.webm',
+            // range: [
+            //     '0-540135/8566268',
+            //     '540136-8566268/8566268',
+            // ]
+            // Sample-4
+            // fileName: '/cannotstream2.webm',  // by http://www.online-convert.com
+            // range: [
+            //     '0-540135/11509062',
+            //     '540136-11509062/11509062',
+            // ]
+            // Sample-3
+            // By: https://www.bento4.com/
+            // By: http://stackoverflow.com/questions/22996665/unable-to-get-mediasource-working-with-mp4-format-in-chrome
+            // Usage: MP4Box -dash 10000 largeFile.mp4  (產生每 10 秒一個 Segment 的 ByteRange Segment Table Output)
+            // Usage: mp4fragment largeFile.mp4 largeFile2.mp4 && mp4dash largeFile2.mp4 --no-split --force
+            // fileName: '/largeFile_dashinit.mp4',  // by http://www.online-convert.com
+            // range: [
+            //     '0-540135/17145600',
+            //     '540136-17145600/17145600',
+            // ]
+            // Sample-2
+            // fileName: '/my_audio.webm',  // by http://www.online-convert.com
+            // range: [
+            //     '0-540135/3985801',
+            //     '540136-3985801/3985801',
+            // ]
+            // Sample-1
+            // Usage: mp4dash largeFile2.mp4 -f --no-split
+            // 打開 .mpd 檔案先抓 Init Segment 在抓剩餘的 Buffer 部份即可！利用 SourceBuffer 按照秒數來播放(透過 Dash Size 來切秒數)
+            // fileName: '/output/largeFile2.mp4',  // by http://www.online-convert.com
+            // range: [
+            //     '0-2052/17178580',
+            //     '2053-17178580/17178580',
+            // ]
+        };
+    </script>
+    <script>
+        // for sample06.js
+        function callback(buffer, sourceBuffer){
+            sourceBuffer.appendBuffer(buffer);
+            console.log(buffer.byteLength);
+        };
+
+
+        function get(url, callback, sourceBuffer) {
+            // headers: { 'Range': 'bytes=0-2000' },
+            var xhr = new XMLHttpRequest();
+            
+            // add Byte Ranges
+
+            xhr.open('GET', url, true);
+            xhr.responseType = 'arraybuffer';  // jQuery Ajax 還不大確定怎寫
+
+            // Total: 3711807 bytes
+            // xhr.setRequestHeader("Range", 'bytes=0-');
+            xhr.setRequestHeader("Range", `bytes=${inputObj.range[0]}`);
+            // xhr.setRequestHeader("Range", 'bytes=91507-1091507/1991507');
+            xhr.send();
+            xhr.onload = function() {
+                if (xhr.status !== 206) {
+                    alert('Unexpected status code ' + xhr.status + ' for ' + url);
+                    return false;
+                }
+                // callback(new Uint8Array(xhr.response));
+
+                // pass arraybuffer to another callback func
+                callback(xhr.response, sourceBuffer);
+            };
+        };
+
+        var ms = new MediaSource();
+
+        var video = document.querySelector('video');
+        video.src = window.URL.createObjectURL(ms);
+
+        ms.addEventListener('sourceopen', function(e) {
+          // Support MimeType List at Ref: https://developers.google.com/cast/docs/media#mp4-video-and-audio
+          // var sourceBuffer = ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+          var sourceBuffer = ms.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.5"');
+          get(inputObj.fileName, callback, sourceBuffer);
+
+          // regist a reference
+          window.video = {
+            sourceBuffer: sourceBuffer
+          };
+        }, false);
+    </script>
+    <!-- 分段播放第二次 Ajax 去增加 MediaSource Buffer Data -->
+    <script>
+        function download_more(){
+            // headers: { 'Range': 'bytes=0-2000' },
+            var xhr = new XMLHttpRequest();
+            
+            // add Byte Ranges
+
+            xhr.open('GET', inputObj.fileName, true);
+            xhr.responseType = 'arraybuffer';  // jQuery Ajax 還不大確定怎寫
+
+            // Total: 3711807 bytes
+            // xhr.setRequestHeader("Range", 'bytes=0-');
+            xhr.setRequestHeader("Range", `bytes=${inputObj.range[1]}`);
+            // xhr.setRequestHeader("Range", 'bytes=540135-1991507/1991507');
+            xhr.send();
+            xhr.onload = function() {
+                if (xhr.status !== 206) {
+                    alert('Unexpected status code ' + xhr.status + ' for ' + url);
+                    return false;
+                }
+                // callback(new Uint8Array(xhr.response));
+
+                // pass arraybuffer to another callback func
+                callback(xhr.response, video.sourceBuffer);
+            };
+        };
+    </script>
+    <button onclick="download_more();">Download Second Segment Video Buffer</button>
+    </body>
+</html>

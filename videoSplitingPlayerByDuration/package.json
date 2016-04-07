@@ -1,0 +1,24 @@
+{
+  "name": "videosplitingplayerbyduration",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www",
+    "lift": "nodemon ./bin/www",
+    "debug": "ndb",
+    "install:ffmpeg": "sudo apt install ffmpeg",
+    "hex:video": "hexdump -C ./fixtures/origin.mp4"
+  },
+  "dependencies": {
+    "cookie-parser": "~1.4.3",
+    "debug": "~2.6.9",
+    "express": "~4.16.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "http-errors": "~1.6.2",
+    "memory-streams": "^0.1.3",
+    "morgan": "~1.9.0",
+    "ndb": "^1.0.24",
+    "nodemon": "^1.18.3",
+    "pug": "2.0.0-beta11"
+  }
+}

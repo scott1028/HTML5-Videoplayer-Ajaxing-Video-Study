@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC DataChannel 範例</title>
+    <script src="https://code.jquery.com/jquery-3.2.1.js"></script>
+</head>
+<body>
+<p>WebRTC DataChannel 基於 SCTP 通訊協定, Ref: https://zh.wikipedia.org/wiki/%E6%B5%81%E6%8E%A7%E5%88%B6%E4%BC%A0%E8%BE%93%E5%8D%8F%E8%AE%AE</p>
+<p>SCTP 通訊協定詳細, Ref: http://applezulab.netdpi.net/network/sctp_introduction</p>
+<button onclick="sendMessage(pc1);">PC1 Send to PC2</button>
+<button onclick="sendMessage(pc2);">PC2 Send to PC1</button>
+<input type="text" name="message" />
+<pre class="output"></pre>
+<script>
+    function sendMessage(from){
+        var msg = $('input').val();
+        if(!msg) return;
+        from.dataChannel.send(msg);
+        $('input').val('');
+    }
+</script>
+<script>
+    function trace(arg) {
+        var now = (window.performance.now() / 1000).toFixed(3);
+        console.log(now + ': ', arg);
+    }
+</script>
+<script>
+    function endpointFactory(channelName){  
+        var dataChannelOptions = {
+            ordered: false, //不保证到达顺序
+            maxRetransmitTime: 3000, //最大重传时间
+        };
+        dataChannelOptions = null;
+
+        var peerConnection = new RTCPeerConnection();
+
+        peerConnection.oniceconnectionstatechange = function(e){
+            console.log(peerConnection.iceConnectionState);
+        }
+
+        peerConnection.onicecandidate = function(e) {
+            console.log('** onicecandidate!');
+            //
+            if (e.candidate) {
+                peerConnection.$$target.addIceCandidate(new RTCIceCandidate(e.candidate));
+            }
+        }
+
+        //使用信令传输信道创建对等连接
+        var dataChannel =
+          peerConnection.createDataChannel(channelName, dataChannelOptions);
+
+        dataChannel.onerror = function(error) {
+            console.log("Data Channel Error:", error);
+        };
+
+        // simalar to `onAddStream`
+        peerConnection.ondatachannel = function(e){
+            // get Remote Channel reference
+            e.channel.onmessage = function(e){
+                var log = `${peerConnection.$$ownId} Got Data From ${peerConnection.$$targetId} Channel Message: ${e.data}\r\n`;
+                console.log(log);
+                $('.output').append(log);
+            };
+        };
+
+        /*
+        // for remote 這是給 Remote 寫 callback 用的 Interface
+        dataChannel.onmessage = function(event){ };
+        */
+
+        dataChannel.onopen = function () {
+            dataChannel.send("Hello World!");
+        };
+
+        dataChannel.onclose = function () {
+            console.log("The Data Channel is Closed");
+        };
+
+        // simulate a server exchange sdp flow
+        peerConnection.$$startNegotiation = function(){
+            console.log('pc1 is ready to createOffer!');
+            peerConnection.createOffer({/* options */}).then(function(offer) {
+                peerConnection.setLocalDescription(offer).then(function(){
+                    peerConnection.$$target.setRemoteDescription(offer).then(function(){
+                        peerConnection.$$target.createAnswer().then(function(answer) {
+                            peerConnection.$$target.setLocalDescription(answer).then(function(){
+                                peerConnection.setRemoteDescription(answer);
+                                trace('6-pc1 did setRemoteDescription');
+                            });
+                            trace('5-pc2 did setRemoteDescription');
+                        });
+                        trace('4-pc2 did createAnswer');
+                    });
+                    trace('3-pc2 did setRemoteDescription');
+                });
+                trace('2-pc1 did setLocalDescription');
+            });
+            trace('1-pc1 did createOffer');
+        };
+
+        return {
+            peerConnection: peerConnection,
+            dataChannel: dataChannel,
+            setTarget: function(peerConnection, id, ownId){
+                this.peerConnection.$$target = peerConnection;
+                this.peerConnection.$$targetId = id;
+                this.peerConnection.$$ownId = ownId;
+            }
+        };
+    }
+</script>
+<script>
+</script>
+<script>
+    var pc1 = endpointFactory('myChannela');
+    var pc2 = endpointFactory('myChannelb');
+    pc1.setTarget(pc2.peerConnection, 'pc2', 'pc1');
+    pc2.setTarget(pc1.peerConnection, 'pc1', 'pc2');
+
+    // pc1 start negotiation with pc2 client
+    pc1.peerConnection.$$startNegotiation();
+</script>
+</body>
+</html>

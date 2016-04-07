@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>強制使用 Relay Server 版本</title>
+    <style type="text/css">
+        #theirs {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 400px;
+        }
+        #yours {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            width: 150px;
+            z-index: 9999;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+<p>測試 Canvas as Stream(無相機的時候測試)</p>
+<p>Ref: https://developers.google.com/web/updates/2016/10/capture-stream</p>
+<pre>
+    流程解說：
+        1. create peerConnectionChannel
+        2. bind all event handler, ex: onIceCandidate, onAddStream, etc
+        3. addStream (當前使用者的串流來源, 必須在 CreateOffer 之前)
+        4. CreateOffer 在寄給對方(包含這端的網路資訊與影響編碼資訊等等) -> setRemoteSDP, etc。
+</pre>
+<div>
+    <p>Canvas</p>
+    <canvas id="cyours"></canvas>
+    <canvas id="ctheirs"></canvas>
+</div>
+<div style="position: relative;">
+    <p>Your Video</p>
+    <video id="yours" autoplay></video>
+    <video id="theirs" autoplay></video>
+</div>
+<!-- [Start] 持續更新保證 Stream 有新的影響 Frame to stream -->
+<script>
+    var x = 50;
+    var y = 50;
+    var d = 1;
+    var update = function(){
+        if(x >= cyour.width / 2)
+            d *= -1;
+        else if(x <= 0)
+            d *= -1;
+        x += 0.2 * d;
+        y += 0.1 * d;
+        yctx.drawImage(imageObj1, 0, 0);
+        // custom
+        yctx.beginPath();
+        yctx.moveTo(10, 10);
+        yctx.lineTo(x, y);
+        yctx.stroke();
+
+        tctx.drawImage(imageObj2, 0, 0);
+
+        // custom
+        tctx.beginPath();
+        tctx.moveTo(ctheirs.width - 10, ctheirs.height - 10);
+        tctx.lineTo(ctheirs.width - x, ctheirs.height - y);
+        tctx.stroke();
+    };
+
+    requestAnimationFrame(function tick(){
+        yctx.clearRect(0, 0, cyour.width, cyour.height);
+        tctx.clearRect(0, 0, ctheirs.width, ctheirs.height);
+        update();
+        requestAnimationFrame(tick);
+    });
+</script>
+<!-- [End] -->
+<script>
+function trace(arg) {
+    var now = (window.performance.now() / 1000).toFixed(3);
+    console.log(now + ': ', arg);
+}
+
+var img1 = 'sample09_webRTC_no_server.png';
+var img2 = 'sample09_RTCPeerConnection_detail_steps.jpg';
+
+var imageObj1 = new Image();
+imageObj1.onload = function() {
+    yctx.drawImage(this, 0, 0);
+};
+imageObj1.src = img1;
+
+var imageObj2 = new Image();
+imageObj2.onload = function() {
+    tctx.drawImage(this, 0, 0);
+};
+imageObj2.src = img2;
+
+var cyour = document.querySelector('#cyours');
+var ctheirs = document.querySelector('#ctheirs');
+var yctx = document.querySelector('#cyours').getContext('2d');
+var ystream = document.querySelector('#cyours').captureStream();
+var yourVideo = document.getElementById("yours");
+var tctx = document.querySelector('#ctheirs').getContext('2d');
+var tstream = document.querySelector('#ctheirs').captureStream(1);  // ex: fps = 1
+var theirVideo = document.getElementById("theirs");
+
+//
+var yourConnection, theirConnection;
+var tpc = theirPeerConnetion();  // 被動等待方(待命方)
+var ypc = startPeerConnection();  // 主動連線方(發起方)
+
+// Main
+yourConnection.addStream(ystream);  // Important: add stream before createOffer, createAnswer
+// theirConnection.addStream(tstream);  // Important: add stream before createOffer, createAnswer
+yourConnection.$$startNegotiation();   // 開始談判交換編碼資訊與路由在 Add Stream 之後。
+
+function startPeerConnection() {
+    // 可以自己 Build 一個 Stun/Turn Server(ICE Server)
+    var config = {
+        'iceServers': [{ 'urls': 'turn:demo1.net.cn:3479', username: 'username1', credential: 'key1' }, {urls:["stun:stun.l.google.com:19302"]}]
+    };
+    config = null;
+
+    yourConnection = new RTCPeerConnection(config);
+
+    yourConnection.oniceconnectionstatechange = function(e){
+        console.log(yourConnection.iceConnectionState);
+    }
+
+    yourConnection.onicecandidate = function(e) {
+        console.log('[3] onicecandidate!');
+        //
+        if (e.candidate) {            
+            // [start] add relay only mode
+            // var type = e.candidate.candidate.split(" ")[7];
+            // if (type != "relay") {
+            //     console.log("candidate ignored: TURN only mode.");
+            //     return;
+            // }
+            // [end] add relay only mode
+
+            theirConnection.addIceCandidate(new RTCIceCandidate(e.candidate));
+        }
+    }
+
+    yourConnection.onaddstream = function(e) {
+        theirVideo.srcObject = e.stream;
+        trace('your received remote stream');
+    }
+
+    // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+    yourConnection.$$startNegotiation = function(){
+        console.log('yourConnection is ready to createOffer!');
+        yourConnection.createOffer({/* options */}).then(function(offer) {
+            yourConnection.setLocalDescription(offer).then(function(){
+                theirConnection.setRemoteDescription(offer).then(function(){
+                    theirConnection.addStream(tstream);  // Important: add stream before createOffer, createAnswer
+                    theirConnection.createAnswer().then(function(answer) {
+                        theirConnection.setLocalDescription(answer).then(function(){
+                            yourConnection.setRemoteDescription(answer);
+                            trace('6-yourConnection did setRemoteDescription');
+                        });
+                        trace('5-theirConnection did setRemoteDescription');
+                    });
+                    trace('4-theirConnection did createAnswer');
+                });
+                trace('3-theirConnection did setRemoteDescription');
+            });
+            trace('2-yourConnection did setLocalDescription');
+        });
+        trace('1-yourConnection did createOffer');
+    }
+    return yourConnection;
+}
+
+function theirPeerConnetion(){
+    var config = {
+        'iceServers': [{ 'urls': 'turn:demo1.net.cn:3479', username: 'username1', credential: 'key1' }, {urls:["stun:stun.l.google.com:19302"]}]
+    };
+    config = null;
+    theirConnection = new RTCPeerConnection(config);
+
+    theirConnection.oniceconnectionstatechange = function(e){
+        console.log(theirConnection.iceConnectionState);
+    }
+
+    theirConnection.onicecandidate = function(e) {
+        // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+        if (e.candidate) {
+            // [start] add relay only mode
+            // var type = e.candidate.candidate.split(" ")[7];
+            // if (type != "relay") {
+            //     console.log("candidate ignored: TURN only mode.");
+            //     return;
+            // }
+            // [end] add relay only mode
+
+            yourConnection.addIceCandidate(new RTCIceCandidate(e.candidate));
+        }
+    }
+    
+    theirConnection.onaddstream = function(e) {
+        yourVideo.src = window.URL.createObjectURL(e.stream);
+        trace('** their received remote stream');
+    }
+
+    return theirConnection;
+}
+</script>
+</body>
+</html>

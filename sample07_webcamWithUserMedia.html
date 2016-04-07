@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+</head>
+<body>
+<video></video>
+<script>
+    var recordedChunks=[];
+
+
+    function handleDataAvailable(event) {
+        if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+        } else {
+            // ...
+            console.log('No Data!');
+        }
+    }
+
+
+    navigator.webkitGetUserMedia({audio: true, video: true}, function(stream){
+        // display to vidoe tag
+        var v = document.querySelector('video');
+        var url = window.URL || window.webkitURL;
+        v.src = url ? url.createObjectURL(stream) : stream;
+        v.play();
+
+        // recording for save
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorder.ondataavailable = handleDataAvailable;
+        mediaRecorder.start();
+        }, function(e){
+            console.log(e)
+        });
+
+    function download(){
+        var a = document.createElement("a");
+        document.body.appendChild(a);
+        var url = URL.createObjectURL(new Blob(recordedChunks));
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    setTimeout(function(){
+        console.log('Data->', recordedChunks);
+        download();
+        console.log('Continue Recording.... in variable $recordedChunks.');
+        console.log('在沒有 stop recording 狀態下 Download 時間軸顯示不會正常！.');
+    }, 3000)
+</script>
+</body>
+</html>

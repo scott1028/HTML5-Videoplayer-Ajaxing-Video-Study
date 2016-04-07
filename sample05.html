@@ -1,0 +1,53 @@
+<html>
+<script>
+    var recordedChunks=[];
+    var objUrl = [];
+
+    //
+    function handleDataAvailable(event) {
+        if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+        } else {
+            // ...
+        }
+    }
+
+    //
+    function record(){
+        navigator.webkitGetUserMedia({audio: true, video: false}, function(stream){
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            mediaRecorder.ondataavailable = handleDataAvailable;
+            mediaRecorder.start();
+            }, function(e){
+                console.log(e)
+            });
+    };
+
+    //
+    function download(){
+
+        var a = document.createElement("a");
+        document.body.appendChild(a);
+        document.body.appendChild(document.createElement("br"));
+        var url = URL.createObjectURL(new Blob(recordedChunks));
+        a.text = url;
+        a.href = url;
+        a.download = name;
+        a.click();
+        objUrl.push(url);
+    };
+
+    // 註銷住個 URL 類似 Release Memory
+    function releaseObjUrl(){
+        for(var i=0; i < objUrl.length; i++)
+            URL.revokeObjectURL(objUrl[i]);
+    };
+</script>
+<body>
+    <h4>P.S: Need localhost server to run this sample.</h4>
+    <button onclick="record();">Start Record</button>
+    <button onclick="download();">Download Audio</button>
+    <button onclick="releaseObjUrl();">Release ObjURL</button>
+    <br />
+</body>
+</html>

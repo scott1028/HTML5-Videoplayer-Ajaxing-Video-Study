@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Get User Media - For Download</title>
+    <script src="http://scott1028.github.io/sct-plugin/src/hacks/others.js"></script>
+</head>
+<body>
+
+<!-- Test you webcam -->
+<pre style="font-size: 14pt;">
+    Notice: mediaType must be `mimeType: 'video/webm; codecs=vp9'` but don't know why. (vorbis: audio, vp8: video)
+</pre>
+<label id="msg"></label><br />
+<video id="v" controls autoplay></video>
+<div>
+    <button onclick="download()">Download</button>
+    <button onclick="testcase2.playVideoFromBuffer()">Play From Buffer</button>
+    <button onclick="testcase2.playVideoFromDownload()">Play From Download</button>
+    <button onclick="testcase2.downloadFromBuffer()">Download From Buffer</button>
+    <script>
+        var name = 'new.webm';
+        document.querySelector("#msg").textContent = 'Processing...';
+        setTimeout(function(){
+            mediaRecorder.stop();
+            document.querySelector("#msg").textContent = 'Stop';
+            // testcase2.playVideoFromBuffer();
+        }, 1000 * 10);
+        var mediaRecorder;
+        var recordedChunks=[];
+        function handleDataAvailable(event) {
+            if (event.data.size > 0) {
+                var arrayBuffer;
+                var fileReader = new FileReader();
+                fileReader.onload = function(e) {
+                    var ab = this.result;
+                    var dataView = new DataView(ab);
+                    var hexString = '';
+                    for(var i = 0; i < ab.byteLength; i++){
+                        var val = dataView.getUint8(i);
+                        // console.log(val);
+                        var addVal = val.toString(16);
+                        hexString += addVal;
+                        if(hexString.length === 1)
+                            hexString = '0' + hexString;
+                        if(hexString.length === 0)
+                            hexString = '00';
+                    }
+                    //
+                    // console.log(ab.byteLength, hexString);
+                    
+                };
+                // read from blob to arraybuffer.
+                fileReader.readAsArrayBuffer(event.data);
+                recordedChunks.push(event.data);
+            } else {
+                // ...
+                console.log('No Data!');
+            }
+        }
+
+        ;(function(){
+            function userMedia(){
+                return navigator.getUserMedia = navigator.getUserMedia ||
+                navigator.webkitGetUserMedia ||
+                navigator.mozGetUserMedia ||
+                navigator.msGetUserMedia || null;
+
+            }
+
+
+            // Now we can use it
+            if( userMedia() ){
+
+                // configure
+                var constraints = {
+                    video: true,
+                    audio: true
+                    // audio: false
+                };
+
+                var media = navigator.getUserMedia(constraints, function(stream){
+                    console.log(stream);
+
+                    // #1 recording to display
+                    var v = document.getElementById('v');
+                    var url = window.URL || window.webkitURL;
+                    v.src = url ? url.createObjectURL(stream) : stream;
+                    v.play();
+
+                    // #2 recording for save
+                    // https://cs.chromium.org/chromium/src/third_party/WebKit/LayoutTests/fast/mediarecorder/MediaRecorder-isTypeSupported.html
+                    // mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+                    // mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=H264' });
+                    mediaRecorder.ondataavailable = handleDataAvailable;
+                    mediaRecorder.start();
+
+                }, function(error){
+                    console.log("ERROR");
+                    console.log(error);
+                });
+            } else {
+                console.log("KO");
+            }
+        })();
+
+        function download(){
+            var a = document.createElement("a");
+            document.body.appendChild(a);
+            var blobSum = new Blob(recordedChunks, { type: 'video/webm; codecs=vp9' });
+            var url = URL.createObjectURL(blobSum);
+            a.href = url;
+            a.download = name;
+            a.click();
+            URL.revokeObjectURL(url);  // 註銷 URL
+        };
+    </script>
+
+    <!-- Test Open File for hdexdump -->
+    <input id="hexInput" type="file" />
+    <p style="width: 100%; word-wrap: break-word;" id="hexDisplay"></p>
+    <script>
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            console.log(e.target.result);
+            var ab = e.target.result;
+            var dataView = new DataView(ab);
+            var hexString = '';
+            for(var i = 0; i < ab.byteLength; i++){
+                var val = dataView.getUint8(i);
+                // console.log(val);
+                var addVal = val.toString(16);
+                // console.log(addVal);
+                hexString += addVal;
+                if(hexString.length === 1)
+                    hexString = '0' + hexString;
+                if(hexString.length === 0)
+                    hexString = '00';
+            }
+            //
+            document.querySelector("#hexDisplay").textContent = hexString;
+        };
+        var handleFile = function(){
+            reader.readAsArrayBuffer(document.querySelector("#hexInput").files[0]);
+        }
+        document.querySelector("#hexInput").addEventListener('change', handleFile);
+    </script>
+</div>
+
+<!-- Test Open File for video tag -->
+<input id="videoInput" type="file" />
+<script>
+    // 模擬 live chunk 播放
+    var chunkProcessor = function(NUM_CHUNKS, totalArrayBuffer, sourceBuffer){
+        // const NUM_CHUNKS = 5;
+        if(NUM_CHUNKS === undefined)
+            NUM_CHUNKS = 5;
+        var chunkSize = Math.ceil(totalArrayBuffer.byteLength / NUM_CHUNKS);
+
+        var i = 0;
+        var tid = setInterval(function(){
+            //
+            var startByte = chunkSize * i;
+            var chunk = totalArrayBuffer.slice(startByte, startByte + chunkSize);  // arraybuffer chunk
+            console.log(startByte, startByte + chunkSize, chunk.byteLength);
+
+            //
+            if (i >= NUM_CHUNKS - 1){
+                console.log('clearInterval!', tid);
+                clearInterval(tid);
+            }
+            console.log(i, NUM_CHUNKS);
+            i++;
+
+            console.log(sourceBuffer.updating);
+            //
+            sourceBuffer.appendBuffer(chunk);
+        }, 1000);
+    }
+
+    var reader2 = new FileReader();
+    reader2.onload = function(e) {
+        // test mediaSource for play: fail
+        var ms = new MediaSource();
+        var video = document.querySelector('#v2');
+        console.log('Create mediaSource Obj URL!');
+        video.src = window.URL.createObjectURL(ms);
+        ms.addEventListener('sourceopen', function($e) {
+            // vorbis: audio, vp8: video
+            var sourceBuffer = ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+
+            // sourceBuffer.addEventListener('updatestart', function(e) { console.log('updatestart: ' + ms.readyState); });
+            // sourceBuffer.addEventListener('update', function(e) { console.log('update: ' + ms.readyState); });
+            // sourceBuffer.addEventListener('updateend', function(e) {
+            //     console.log('updateend: ' + ms.readyState);
+            //     ms.endOfStream();
+            //     video.play();
+            // });
+
+            console.log(ms.readyState);
+            console.log(e.target.result.byteLength);
+
+            // 模擬 live chunk 播放
+            chunkProcessor(5, e.target.result, sourceBuffer);
+        }, false);
+        video.play();
+    };
+    var handleFile2 = function(){
+        reader2.readAsArrayBuffer(document.querySelector("#videoInput").files[0]);
+    }
+    document.querySelector("#videoInput").addEventListener('change', handleFile2);
+</script>
+
+<!-- Test buffer deplay openfile play buffer video -->
+<video id="v2" controls preload="metadata"></video>
+<script>
+    var testcase2 = {
+        value: null,  // total arraybuffer
+        playVideoFromBuffer: function(){
+            var self = this;
+            var mediaSource = new MediaSource();
+            var video = document.querySelector('#v2');
+            video.src = window.URL.createObjectURL(mediaSource);
+            mediaSource.addEventListener('sourceopen', function(e) {
+                // declare sourceBuffer Type.
+                var sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+
+                // regist a reference
+                window.video = {
+                    sourceBuffer: sourceBuffer
+                };
+
+                // concat all blob at once, 也可以分斷處理慢慢 Append 到 sourceBuffer
+                var blobSum = new Blob(recordedChunks, { type: 'video/webm; codecs="vorbis,vp8"' });
+
+                // blob to arraybuffer
+                var fileReader = new FileReader();
+                fileReader.onload = function(e) {
+                    console.log(e.target.result.byteLength);
+                    self.value = e.target.result;  // for download
+                    sourceBuffer.appendBuffer(e.target.result);
+                }
+                fileReader.readAsArrayBuffer(blobSum);
+            }, false);
+        },
+        playVideoFromDownload: function(){
+            var self = this;
+            if(self.value === null) return console.log('Execute func playVideoFromBuffer first.');
+            var mediaSource = new MediaSource();
+            var video = document.querySelector('#v2');
+            // video.autoplay = true;
+            var blobSum = new Blob([self.value], { type: 'video/webm; codecs="vorbis,vp8"' });
+            var url = URL.createObjectURL(blobSum);
+            video.src = url;
+            video.onloadedmetadata = function() {
+                video.play();
+            };
+        },
+        downloadFromBuffer: function(){
+            var self = this;
+            if(self.value === null) return console.log('Execute func playVideoFromBuffer first.');
+            var a = document.createElement("a");
+            document.body.appendChild(a);
+            var blobSum = new Blob([self.value], { type: 'video/webm; codecs="vorbis,vp8"' });
+            var url = URL.createObjectURL(blobSum);
+            a.href = url;
+            a.download = name;
+            a.click();
+            URL.revokeObjectURL(url);  // 註銷 URL
+        }
+    };
+</script>
+
+<!-- Read File to Buffer -->
+<div>
+    <input type="file" id="videoInput2">
+    <script>
+        var videoBuffer = null;
+        var reader3 = new FileReader();
+        reader3.onload = function(e) {
+            videoBuffer = e.target.result;
+        };
+        var handleFile3 = function(){
+            reader3.readAsArrayBuffer(document.querySelector("#videoInput2").files[0]);
+        }
+        document.querySelector("#videoInput2").addEventListener('change', handleFile3);
+
+        function playFromBuffer3(){
+            if(videoBuffer === null)
+                return alert('Select webm file first.');
+            var ms = new MediaSource();
+            var video = document.querySelector("#v3");
+            video.src = window.URL.createObjectURL(ms);
+            ms.addEventListener('sourceopen', function($e){
+                var sourceBuffer = ms.addSourceBuffer('video/webm; codecs="vorbis,vp8"');
+
+                chunkProcessor(10, videoBuffer, sourceBuffer);
+                // sourceBuffer.appendBuffer(videoBuffer);  // loadall at once.
+            }, false);
+            video.onloadedmetadata = function() {
+                video.play();
+            };
+        };
+
+        function playFromCreateBlobObject3(){
+            var video = document.querySelector("#v3");
+            video.src = window.URL.createObjectURL(new Blob([videoBuffer], { type: 'video/webm; codecs="vorbis,vp8"' }));
+            console.log(video.src);
+            video.onloadedmetadata = function() {
+                video.play();
+            };
+        }
+    </script>
+    <button onclick="playFromBuffer3();">Play From VideoBuffer3</button>
+    <button onclick="playFromCreateBlobObject3();">Play From VideoBlobObject3</button>
+    <video id="v3" controls preload="metadata"></video>
+</div>
+
+</body>
+</html>
+

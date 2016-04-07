@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <style type="text/css">
+        .theirs{
+            position: absolute;
+            top: 100px;
+            left: 100px;
+            width: 500px;
+        }
+        .yours{
+            position: absolute;
+            top: 120px;
+            left: 480px;
+            width: 100px;
+            z-index: 9999;
+            border:1px solid #ddd;
+        }
+
+        #yours, #thiers {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<pre>
+    - 後者使用 createOffer 前者接手使用 createAnswer 回應 SDP！
+    - 其中 candidate 跟 SDP 資訊都是可以 JSON.stringify 的！
+    - createOffer 方會先觸發 Candidate, 接收端只要設定 Candidate 即可！
+</pre>
+<div class="yours">
+    <label style="background-color: yellow; padding: 5px;">Yours</label>
+    <video id="yours" autoplay></video>
+</div>
+<div class="theirs">
+    <label style="background-color: yellow; padding: 5px;">Theirs</label>
+    <video id="theirs" autoplay></video>
+</div>
+<script>
+function logError(error) {
+    console.error(error.name + ": " + error.message);
+}
+
+function hasUserMedia() {
+    navigator.getUserMedia = navigator.getUserMedia || navigator.msGetUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    return !!navigator.getUserMedia;
+}
+function hasRTCPeerConnection() {
+    window.RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection || window.msRTCPeerConnection;
+    return !!window.RTCPeerConnection;
+}
+// 可以自己 Build 一個 Stun/Turn Server(ICE Server)
+var config = {
+    // 'iceServers': [{ 'url': 'stun:stun.services.mozilla.com' }, { 'url': 'stun:stunserver.org' }, { 'url': 'stun:stun.l.google.com:19302' }]
+    'iceServers': [{ 'url': 'stun:114.43.204.241:3478' }]
+};
+
+var yourVideo = document.getElementById("yours");
+var theirVideo = document.getElementById("theirs");
+// var yourConnection, theirConnection;
+
+if (hasUserMedia()) {
+    navigator.getUserMedia({ video: true, audio: false },
+        stream => {
+            yourVideo.src = window.URL.createObjectURL(stream);
+            if (hasRTCPeerConnection()) {
+                // 雙方都必須先連上 Signaling Server Ready 等待 SDP 交換溝通
+                console.log('Remote connection start! after 1.5 seconds your connection will start.');
+                console.debug('Created their!');
+                dummySignalingServer.their = theirPeerConnetion(stream);
+                setTimeout(function(){
+                    console.log('Your connection start!');
+                    console.debug('Created your!');
+                    dummySignalingServer.your = startPeerConnection(stream);
+                }, 2000);
+            } else {
+                alert("没有RTCPeerConnection API");
+            }
+        },
+        err => {
+            console.log(err);
+        })
+} else {
+    alert("没有userMedia API")
+}
+
+var counter = 1;
+
+function startPeerConnection(stream) {
+    var yourConnection = new RTCPeerConnection(config);
+    yourConnection.onicecandidate = function(e) {
+        console.debug(counter++, '[onicecandidate] Your candidate recv from stun server.');
+        // candidate is from ice server.
+        // sdp & candidate 可以靠 webSocket Server 來互相傳遞(if e.candidate is null do not send.)
+        if (e.candidate) {
+            // theirConnection.addIceCandidate(new RTCIceCandidate(e.candidate));
+            dummySignalingServer.sendCandidate(yourConnection, e.candidate)
+        }
+    }
+
+    yourConnection.addStream(stream);
+    
+    // 視訊通話連線發起方先調 createOffer
+    // 接收方只要等 signaling Server 通知即可！
+    yourConnection.createOffer().then(function(offerSDP) {
+        console.debug(counter++, '[createOffer] Your offer created set local offer to local sdp.');
+        // sdp & candidate 可以靠 webSocket Server 來互相傳遞
+        yourConnection.setLocalDescription(offerSDP, function(){
+            console.debug(counter++, '[sendSDP] Send your sdp to their peer.');
+            dummySignalingServer.sendSDP(offerSDP, yourConnection);
+        }, function(error) {
+            console.error(error.name + ": " + error.message);
+        });
+    });
+
+    return yourConnection;
+}
+
+function theirPeerConnetion(stream){
+    var theirConnection = new RTCPeerConnection(config);
+    theirConnection.onicecandidate = function(e) {
+        console.debug(counter++, '[onicecandidate] Their candidate recv from stun server.');
+        // candidate is from ice server.
+        // sdp & candidate 可以靠 webSocket Server 來互相傳遞(if e.candidate is null do not send.)
+        if (e.candidate) {
+            dummySignalingServer.sendCandidate( e.candidate, theirConnection)
+        }
+    }
+    
+    theirConnection.onaddstream = function(e) {
+        console.debug(counter++, '[onaddstream] trigger! This is not final step.');
+        theirVideo.src = window.URL.createObjectURL(e.stream);
+    }
+
+    return theirConnection;
+}
+
+
+// can be build by webSocket.
+var dummySignalingServer = {
+    your: null,
+    their: null,
+    sendCandidate: function(data, fromWho){
+        var self = this;
+        if(fromWho === dummySignalingServer.your)
+            return this.onmessageCandidate({data: data}, dummySignalingServer.their)
+        if(fromWho === dummySignalingServer.their)
+            return this.onmessageCandidate({data: data}, dummySignalingServer.your)
+    },
+    onmessageCandidate: function(e, toWho){
+        var self = this;
+        console.debug(counter++, '[onmessageCandidate]', 'from your to their?', toWho === self.their, ',from their to your?', toWho === self.your);
+        toWho.addIceCandidate(new RTCIceCandidate(e.data));
+    },
+    sendSDP: function(data, fromWho, isAnswerSDP){
+        var self = this;
+        console.debug('from your to their?', fromWho === self.your, ',from their to your?', fromWho === self.their);
+        if(fromWho === self.your)
+            return self.onmessageSDP({data: data}, self.their, isAnswerSDP)
+        if(fromWho === self.their)
+            return self.onmessageSDP({data: data}, self.your, isAnswerSDP)
+    },
+    onmessageSDP: function(e, toWho, isAnswerSDP){
+        var self = this;
+        console.debug(counter++, '[onmessageSDP]', 'from your to their?', toWho === self.their, ',from their to your?', toWho === self.your);
+        var remoteSDP = e.data;
+
+        //
+        if(isAnswerSDP){
+            // A Peer
+            toWho.setRemoteDescription(remoteSDP, function(){
+                console.debug(counter++, '[SDP Done] Your peer set remote SDP finished.(*SDP Final Step) from B Peer?', toWho === self.your);
+            }, function(error) {
+                console.error(error.name + ": " + error.message);
+            })
+
+            return;
+        }
+        else{
+            // B Peer remote sdp
+            console.log(counter++, '[setRemoteDescription] Their recv your sdp and set their local sdp as your one');
+            toWho.setRemoteDescription(remoteSDP, function(){
+                console.log(counter++, '[createAnswer] Their create answer sdp');
+                toWho.createAnswer().then(function(answerSDP) {
+                    // set B peer local sdp
+                    console.log(counter++, '[setLocalDescription] Their set answer sdp to local offer');
+                    toWho.setLocalDescription(answerSDP, function(){
+                        // send b client sdp to a client for set
+                        console.log(counter++, '[sendSDP] their send answer sdp to your');
+                        self.sendSDP(answerSDP, toWho, true);
+                    }, function(error) {
+                        console.error(error.name + ": " + error.message);
+                    });
+                })
+            }, function(error) {
+                console.error(error.name + ": " + error.message);
+            });
+        }
+    }
+};
+
+</script>
+<div style="clear: both;" ></div>
+<img src="sample09_RTCPeerConnection_detail_steps.jpg" style="position: absolute; top: 500px;" />
+</body>
+</html>
