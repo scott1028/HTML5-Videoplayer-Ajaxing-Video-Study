@@ -24,6 +24,7 @@ router.get('/video', (req, res, next) => {
     .outputOptions([
       `-ss ${ss}`,
       `-to ${to}`,
+      `-vf scale=320:240`,
     ])
     .format('webm')
     .pipe()
