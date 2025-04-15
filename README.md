@@ -112,3 +112,5 @@ top_field_first=0
 repeat_pict=0
 [/FRAME]
 ```
+
+#### [How to parse bytes to seconds of MP4?](https://raw.githubusercontent.com/scott1028/HTML5-Videopayer-Design-Sample/master/HOW_TO_HANDLE_STREAMING_VIDEO_THROUGH_SECONDS.md)  
